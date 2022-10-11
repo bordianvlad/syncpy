@@ -1,0 +1,158 @@
+import os
+import hashlib
+import time
+
+LOG = input("Input filepath and name of the log file, with extension: ")
+#example for the log filepath and name: /home/user/synctest/log.txt
+
+
+# log function
+def log(message):
+    # write log
+    now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    with open(LOG, 'a') as f:
+        f.write('['+now+']'+message+'\n')
+
+
+
+def compare2file(file1, file2):
+    # compare 2 files with hash
+    with open(file1, 'rb') as f1:
+        with open(file2, 'rb') as f2:
+            if hashlib.md5(f1.read()).hexdigest() == hashlib.md5(f2.read()).hexdigest():
+                return True
+            else:
+                return False
+
+def compareHashFolder(source, replica):
+    # compare hash source
+    # return True if all file is same
+    # return False if any file is different
+     # get all file in source
+    files = os.listdir(source)
+    # get all file in replica
+    files_replica = os.listdir(replica)
+    # compare 2 list
+    if len(files) != len(files_replica):
+        return False
+
+    for file in files:
+        if file in files_replica:
+            if not compare2file(source+'/'+file, replica+'/'+file):
+                return False
+        else:
+            return False
+    return True
+
+#------------------------------------------------------------------
+
+log('Start')
+
+sync_interval = int(input("Input the synchronization interval: "))
+
+if os.path.isfile('config.txt'):
+    print("config file: OK")
+    log ('config file: OK')
+    # get variable from config
+    with open('config.txt', 'r') as f:
+        lines = f.readlines()
+        source = lines[0].split(':')[1].strip()
+        replica = lines[1].split(':')[1].strip()
+
+else:
+    log('config file: NOT FOUND')
+    print("config file: NOT FOUND")
+    # input folder paths
+    source = input('input source path:')
+    replica = input('input replica path:')
+    # check if source folder exists
+    if not os.path.isdir(source):
+        log('source: NOT FOUND')
+        print('source does not exist')
+        exit()
+    # check if replica folder exists
+    if not os.path.isdir(replica):
+        log('replica: NOT FOUND')
+        print('replica does not exist')
+        exit()
+    # write config
+    with open('config.txt', 'w') as f:
+        f.write('source:'+source)
+        f.write('\n')
+        f.write('replica:'+replica)
+    print('config file: CREATED')
+    log('config file: CREATED')
+
+# run loop every x seconds
+
+while True:
+    # check if source is identical with replica
+    if compareHashFolder(source, replica):
+        now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        print(f'[{now}] file is up to date')
+        log('file is up to date')
+        # sleep for x seconds
+        time.sleep(sync_interval)
+        continue    
+
+    # check source
+    if os.path.isdir(source):
+        print('source: ONLINE')
+        log('source: ONLINE')
+    else:
+        print('source does not exist')
+        log('source does not exist')
+        print('please check your config file')
+        break
+
+    # check replica
+    if os.path.isdir(replica):
+        print('replica: ONLINE')
+        log('replica: ONLINE')
+    else:
+        print('replica does not exist')
+        log('replica does not exist')
+        print('please check your config file')
+        break
+
+    # check file hash in source and compare with replica
+    countSync = 0
+    updateFile = 0
+    deleteFile = 0
+
+    # get all file in source
+    files = os.listdir(source)
+    # get all file in replica
+    files_replica = os.listdir(replica)
+    # compare 2 list
+    for file in files_replica:
+        if file in files:
+            if compare2file(source+'/'+file, replica+'/'+file):
+                log(f'{file} is up to date')
+                countSync += 1
+            else:
+                # copy file from source to replica
+                updateFile += 1
+                os.remove(replica+'/'+file)
+                os.system('cp '+source+'/'+file+' '+replica)
+                log(f'{file} is updated')
+        if file not in files:
+            # delete file in replica
+            log(f'{file} is deleted')
+            deleteFile += 1
+            os.remove(replica+'/'+file)
+
+    for file in files:
+        if file not in files_replica:
+            # copy file from source to replica
+            updateFile += 1
+            log(f'{file} is copied')
+            os.system('cp '+source+'/'+file+' '+replica)
+
+
+
+    now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    print(f'[{now}] sync: {countSync}; update: {updateFile}; delete: {deleteFile};')
+
+    # sleep for x seconds
+    time.sleep(sync_interval)
